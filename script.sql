@@ -497,6 +497,21 @@ ORDER BY `total_incl_vat` DESC, `orders_count` DESC;
 $$
 DELIMITER ;
 
+DROP VIEW IF EXISTS `v_stock_alert`;
+DELIMITER $$
+CREATE VIEW `v_stock_alert` AS
+SELECT
+    a.`id` AS `article_id`,
+    a.`sku`,
+    a.`title`,
+    a.`stock_quantity`,
+    fn_article_stock_level(a.`stock_quantity`) AS `stock_level`
+FROM `articles` a
+WHERE a.`stock_quantity` <= 10
+ORDER BY a.`stock_quantity` ASC, a.`id` ASC;
+$$
+DELIMITER ;
+
 -- =======================
 -- 7) TRIGGERS (ordre alphabétique des tables)
 -- =======================
