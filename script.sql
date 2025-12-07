@@ -478,6 +478,25 @@ ORDER BY `total_qty_sold` DESC, `total_incl_vat` DESC;
 $$
 DELIMITER ;
 
+DROP VIEW IF EXISTS `v_active_customers`;
+DELIMITER $$
+CREATE VIEW `v_active_customers` AS
+SELECT
+    o.`user_id`,
+    o.`user_email`,
+    o.`user_firstname`,
+    o.`user_lastname`,
+    COUNT(*) AS `orders_count`,
+    SUM(o.`total_net`) AS `total_net`,
+    SUM(o.`total_vat`) AS `total_vat`,
+    SUM(o.`total_incl_vat`) AS `total_incl_vat`
+FROM `orders` o
+WHERE o.`status` IN ('confirmed', 'paid')
+GROUP BY o.`user_id`, o.`user_email`, o.`user_firstname`, o.`user_lastname`
+ORDER BY `total_incl_vat` DESC, `orders_count` DESC;
+$$
+DELIMITER ;
+
 -- =======================
 -- 7) TRIGGERS (ordre alphabétique des tables)
 -- =======================
