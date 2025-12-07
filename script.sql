@@ -128,6 +128,9 @@ ALTER TABLE `article_categories`
 
 -- articles
 ALTER TABLE `articles`
+  ADD CONSTRAINT `chk_articles_unit_price` CHECK (`unit_price` >= 0),
+  ADD CONSTRAINT `chk_articles_vat_rate` CHECK (`vat_rate` >= 0),
+  ADD CONSTRAINT `chk_articles_stock_quantity` CHECK (`stock_quantity` >= 0),
   ADD CONSTRAINT `uk_articles_sku` UNIQUE(`sku`);
 
 -- categories
@@ -137,6 +140,9 @@ ALTER TABLE `categories`
 
 -- order_lines
 ALTER TABLE `order_lines`
+  ADD CONSTRAINT `chk_order_lines_quantity` CHECK (`quantity` >= 1),
+  ADD CONSTRAINT `chk_order_lines_article_unit_price` CHECK (`article_unit_price` >= 0),
+  ADD CONSTRAINT `chk_order_lines_article_vat_rate` CHECK (`article_vat_rate` >= 0),
   ADD CONSTRAINT `fk_order_lines_order_id` FOREIGN KEY(`order_id`) REFERENCES `orders`(`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_order_lines_article_id` FOREIGN KEY(`article_id`) REFERENCES `articles`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
