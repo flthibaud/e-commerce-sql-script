@@ -25,28 +25,42 @@ Le script est organisé en plusieurs parties, exécutées dans l'ordre :
     *   **Contraintes de vérification (`CHECK`)** :
         *   Vérification de la validité du modèle intervallaire pour les catégories (`border_right > border_left`).
 
-4.  **Déclencheurs (Triggers)** :
+4.  **Procédures stockées et fonctions** :
+    *   Utilisées par les triggers pour éviter la duplication : validation/hachage des mots de passe, hydratation des données utilisateur/produit, contrôle du stock, calcul des totaux de ligne et de commande, génération du numéro de commande, historisation des statuts.
+    *   Fonctions d'affichage : libellé de statut (`fn_order_status_label`), niveau de stock (`fn_article_stock_level`).
+
+5.  **Vues** :
+    *   Vues de reporting : chiffre d'affaires quotidien/mensuel, articles les plus vendus, clients les plus actifs, alerte stock, chiffre d'affaires par catégorie.
+
+6.  **Déclencheurs (Triggers)** :
     *   Plusieurs déclencheurs sont mis en place pour automatiser des actions et garantir l'intégrité des données :
     *   **`users`**:
-        *   `trg_users_bi` / `trg_users_bu`: Valide la complexité du mot de passe et le crypte en SHA1 avant insertion ou mise à jour.
+        *   `trg_users_bi` / `trg_users_bu`: Valident la complexité du mot de passe via `proc_user_validate_and_hash_password` (SHA1) avant insertion ou mise à jour.
     *   **`orders`**:
-        *   `trg_orders_bi`: Hydrate les informations de l'utilisateur dans la commande lors de sa création.
-        *   `trg_orders_ai`: Génère un numéro de commande unique.
-        *   `trg_orders_au`: Gère les mouvements de stock et l'historique des statuts lors de la mise à jour d'une commande (ex: passage à "paid" ou "cancelled").
+        *   `trg_orders_bi`: Hydrate l'utilisateur (`proc_order_hydrate_user`), force le statut `draft`, génère le numéro de commande via `proc_generate_order_number`.
+        *   `trg_orders_au`: Historise les changements de statut via `proc_log_order_status` et pilote les mouvements de stock sur passage en `paid`/`cancelled`.
     *   **`order_lines`**:
-        *   `trg_order_lines_bi`: Récupère les informations de l'article (snapshot) et calcule les totaux de la ligne.
-        *   `trg_order_lines_bu`: Recalcule les totaux si la quantité est modifiée.
-        *   `trg_order_lines_ai` / `au` / `ad`: Mettent à jour les totaux de la commande parente après une insertion, modification ou suppression d'une ligne.
+        *   `trg_order_lines_bi` / `trg_order_lines_bu`: Hydratent l'article (`proc_order_line_hydrate_article`), contrôlent le stock (`proc_check_stock`), calculent les totaux de ligne (`proc_order_line_compute_totals`).
+        *   `trg_order_lines_ai` / `au` / `ad`: Recalculent les totaux de la commande via `proc_order_recompute_totals`.
     *   **`stock_movements`**:
         *   `trg_stock_movements_bi` / `ai`: Met à jour la quantité en stock de l'article concerné après un mouvement.
 
-5.  **Jeu de test** :
+7.  **Jeu de test** :
     *   Un jeu de données initial est inséré pour peupler les tables `articles`, `categories`, `users` et les tables de liaison.
     *   Ces données permettent de tester le fonctionnement de la base et des déclencheurs. Pour tester les déclencheurs, il faut effectuer des opérations `INSERT`, `UPDATE` et `DELETE` sur les tables `orders` et `order_lines`.
 
 ## Procédures stockées
 
-TODO
+Principales procédures utilitaires (appelées par les triggers) :
+
+- `proc_user_validate_and_hash_password(INOUT p_password)`: valide la complexité et retourne le hash SHA1.
+- `proc_order_hydrate_user(IN p_user_id, OUT ...)`: hydrate les champs utilisateur dans `orders`.
+- `proc_order_line_hydrate_article(IN p_article_id, OUT ...)`: hydrate les champs article dans `order_lines`.
+- `proc_check_stock(IN p_article_id, IN p_required_qty)`: lève une erreur si le stock est insuffisant.
+- `proc_order_line_compute_totals(IN p_unit_price, IN p_vat_rate, IN p_qty, OUT ...)`: calcule `line_net`, `line_vat`, `line_incl_vat`.
+- `proc_order_recompute_totals(IN p_order_id)`: recalcule les totaux d'une commande.
+- `proc_log_order_status(IN p_order_id, IN p_old_status, IN p_new_status)`: historise un changement de statut.
+- `proc_generate_order_number(IN p_order_id, OUT p_order_number)`: génère un numéro de commande mensuel.
 
 ## Tests
 
