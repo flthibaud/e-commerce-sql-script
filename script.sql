@@ -181,6 +181,40 @@ BEGIN
 END$$
 DELIMITER ;
 
+-- orders
+DROP PROCEDURE IF EXISTS `proc_order_hydrate_user`;
+DELIMITER $$
+CREATE PROCEDURE `proc_order_hydrate_user`(
+    IN p_user_id BIGINT,
+    OUT p_firstname VARCHAR(100),
+    OUT p_lastname VARCHAR(100),
+    OUT p_email VARCHAR(255),
+    OUT p_phone VARCHAR(50),
+    OUT p_billing_address TEXT,
+    OUT p_delivery_address TEXT
+)
+BEGIN
+    DECLARE v_exist INT;
+
+    IF p_user_id IS NULL THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "L'utilisateur est obligatoire";
+    END IF;
+
+    SELECT COUNT(*) INTO v_exist FROM `users` WHERE `id` = p_user_id;
+
+    IF v_exist = 0 THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "L'utilisateur n'existe pas";
+    END IF;
+
+    SELECT 
+      `firstname`, `lastname`, `email`, `phone`, `billing_address`, `delivery_address`
+    INTO 
+      p_firstname, p_lastname, p_email, p_phone, p_billing_address, p_delivery_address
+    FROM `users`
+    WHERE `id` = p_user_id;
+END$$
+DELIMITER ;
+
 -- =======================
 -- 4) TRIGGERS (ordre alphabétique des tables)
 -- =======================
@@ -229,41 +263,19 @@ DELIMITER $$
 CREATE TRIGGER `trg_orders_bi`
 BEFORE INSERT ON `orders` FOR EACH ROW
   BEGIN
-    DECLARE v_exist INT;
-    DECLARE v_firstname VARCHAR(100);
-    DECLARE v_lastname VARCHAR(100);
-    DECLARE v_email VARCHAR(255);
-    DECLARE v_phone VARCHAR(50);
-    DECLARE v_billing_address TEXT;
-    DECLARE v_delivery_address TEXT;
     DECLARE v_next_id BIGINT;
-
-    IF NEW.`user_id` IS NULL THEN
-      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "L'utilisateur est obligatoire";
-    END IF;
-
-    SELECT COUNT(*)
-    INTO v_exist
-    FROM users
-    WHERE id = NEW.`user_id`;
-
-    IF v_exist = 0 THEN
-      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "L'utilisateur n'existe pas";
-    END IF;
 
     SET NEW.`status` = 'draft';
 
-    SELECT firstname, lastname, email, phone, billing_address, delivery_address
-    INTO v_firstname, v_lastname, v_email, v_phone, v_billing_address, v_delivery_address
-    FROM users
-    WHERE id = NEW.`user_id`;
-
-    SET NEW.`user_firstname` = v_firstname;
-    SET NEW.`user_lastname` = v_lastname;
-    SET NEW.`user_email` = v_email;
-    SET NEW.`user_phone` = v_phone;
-    SET NEW.`user_billing_address` = v_billing_address;
-    SET NEW.`user_delivery_address` = v_delivery_address;
+    CALL `proc_order_hydrate_user`(
+      NEW.`user_id`,
+      NEW.`user_firstname`,
+      NEW.`user_lastname`,
+      NEW.`user_email`,
+      NEW.`user_phone`,
+      NEW.`user_billing_address`,
+      NEW.`user_delivery_address`
+    );
 
     -- Préparer l'order_number avant insertion pour éviter une mise à jour sur la même table
     SELECT `AUTO_INCREMENT`
