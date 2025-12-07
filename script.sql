@@ -236,6 +236,7 @@ BEFORE INSERT ON `orders` FOR EACH ROW
     DECLARE v_phone VARCHAR(50);
     DECLARE v_billing_address TEXT;
     DECLARE v_delivery_address TEXT;
+    DECLARE v_next_id BIGINT;
 
     IF NEW.`user_id` IS NULL THEN
       SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "L'utilisateur est obligatoire";
@@ -263,18 +264,15 @@ BEFORE INSERT ON `orders` FOR EACH ROW
     SET NEW.`user_phone` = v_phone;
     SET NEW.`user_billing_address` = v_billing_address;
     SET NEW.`user_delivery_address` = v_delivery_address;
-  END$$
-DELIMITER ;
 
-DROP TRIGGER IF EXISTS `trg_orders_ai`;
-DELIMITER $$
-CREATE TRIGGER `trg_orders_ai`
-AFTER INSERT ON `orders` FOR EACH ROW
-BEGIN
-    UPDATE `orders`
-    SET `order_number` = CONCAT(DATE_FORMAT(NOW(), '%Y%m%d'), '-', LPAD(NEW.id, 4, '0'))
-    WHERE `id` = NEW.`id`;
-END$$
+    -- Préparer l'order_number avant insertion pour éviter une mise à jour sur la même table
+    SELECT `AUTO_INCREMENT`
+    INTO v_next_id
+    FROM `information_schema`.`TABLES`
+    WHERE `TABLE_SCHEMA` = DATABASE() AND `TABLE_NAME` = 'orders';
+
+    SET NEW.`order_number` = CONCAT(DATE_FORMAT(NOW(), '%Y%m%d'), '-', LPAD(IFNULL(NEW.`id`, v_next_id), 4, '0'));
+  END$$
 DELIMITER ;
 
 -- orders_lines
