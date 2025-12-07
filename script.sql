@@ -412,7 +412,33 @@ END$$
 DELIMITER ;
 
 -- =======================
--- 6) TRIGGERS (ordre alphabétique des tables)
+-- 6) VUES
+-- =======================
+
+DROP VIEW IF EXISTS `v_sales_daily`;
+DELIMITER $$
+CREATE VIEW `v_sales_daily` AS
+SELECT
+    DATE(t.`status_changed_at`) AS `sales_day`,
+    COUNT(*) AS `orders_count`,
+    SUM(o.`total_net`) AS `total_net`,
+    SUM(o.`total_vat`) AS `total_vat`,
+    SUM(o.`total_incl_vat`) AS `total_incl_vat`
+FROM `orders` o
+JOIN (
+    SELECT `order_id`, MAX(`changed_at`) AS `status_changed_at`
+    FROM `order_history`
+    WHERE `new_status` IN ('confirmed', 'paid')
+    GROUP BY `order_id`
+) t ON t.`order_id` = o.`id`
+WHERE o.`status` IN ('confirmed', 'paid')
+GROUP BY DATE(t.`status_changed_at`)
+ORDER BY `sales_day` ASC;
+$$
+DELIMITER ;
+
+-- =======================
+-- 7) TRIGGERS (ordre alphabétique des tables)
 -- =======================
 
 -- CREATE TRIGGER trigger_name
@@ -688,7 +714,7 @@ END$$
 DELIMITER ;
 
 -- =======================
--- 7) INSERTS (ordre alphabétique des tables)
+-- 8) INSERTS (ordre alphabétique des tables)
 -- =======================
 
 -- articles
