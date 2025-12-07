@@ -249,6 +249,36 @@ BEGIN
 END$$
 DELIMITER ;
 
+-- stock check for order lines
+DROP PROCEDURE IF EXISTS `proc_check_stock`;
+DELIMITER $$
+CREATE PROCEDURE `proc_check_stock`(
+    IN p_article_id BIGINT,
+    IN p_required_qty INT
+)
+BEGIN
+    DECLARE v_stock INT;
+
+    IF p_article_id IS NULL THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "L'article est obligatoire";
+    END IF;
+
+    IF p_required_qty IS NULL OR p_required_qty < 1 THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "Quantité invalide : doit être >= 1";
+    END IF;
+
+    SELECT `stock_quantity` INTO v_stock FROM `articles` WHERE `id` = p_article_id;
+
+    IF v_stock IS NULL THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "Article introuvable pour vérification du stock";
+    END IF;
+
+    IF v_stock < p_required_qty THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "Stock insuffisant pour cet article";
+    END IF;
+END$$
+DELIMITER ;
+
 -- =======================
 -- 4) TRIGGERS (ordre alphabétique des tables)
 -- =======================
@@ -352,6 +382,8 @@ BEFORE INSERT ON `order_lines` FOR EACH ROW
       SET NEW.`quantity` = 1;
     END IF;
 
+    CALL `proc_check_stock`(NEW.`article_id`, NEW.`quantity`);
+
     -- Calcul du HT (Hors Taxe)
     SET NEW.`line_net` = NEW.`article_unit_price` * NEW.`quantity`;
 
@@ -381,6 +413,8 @@ BEFORE UPDATE ON `order_lines` FOR EACH ROW
     IF NEW.`quantity` IS NULL OR NEW.`quantity` < 1 THEN
       SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "Quantité invalide : doit être >= 1";
     END IF;
+
+    CALL `proc_check_stock`(NEW.`article_id`, NEW.`quantity`);
 
     SET NEW.`line_net` = NEW.`article_unit_price` * NEW.`quantity`;
     SET NEW.`line_vat` = NEW.`line_net` * (NEW.`article_vat_rate` / 100);
