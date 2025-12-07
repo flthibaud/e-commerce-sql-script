@@ -47,3 +47,121 @@ Le script est organisé en plusieurs parties, exécutées dans l'ordre :
 ## Procédures stockées
 
 TODO
+
+## Tests
+
+### Utilisateurs
+
+- Utilisateurs : insertion OK + erreur
+```sql
+-- OK : mot de passe valide, sera haché par la proc/trigger
+INSERT INTO users (firstname, lastname, email, password)
+VALUES ('Charlie', 'Doe', 'charlie@example.com', 'AbcdefGH1234#');
+
+SELECT email, password FROM users WHERE email = 'charlie@example.com'; -- doit afficher le hash SHA1
+
+-- Erreur attendue (mdp trop court)
+INSERT INTO users (firstname, lastname, email, password)
+VALUES ('Eve', 'Bad', 'eve@example.com', 'weak');
+```
+
+- Utilisateurs : mise à jour sans changer le mot de passe (fournir l’ancien en clair pour le laisser inchangé)
+```sql
+-- Avant
+SELECT id, email, password FROM users WHERE id = 1;
+
+-- Inchangé : on repasse le même mot de passe en clair
+UPDATE users
+SET phone = '0700000000', password = 'P@$$w0rd#IUT'
+WHERE id = 1;
+
+-- Vérifie que le hash n’a pas bougé
+SELECT id, password FROM users WHERE id = 1;
+```
+
+- Utilisateurs : mise à jour avec nouveau mot de passe + erreur
+```sql
+-- OK : nouveau mot de passe valide, sera re-haché
+UPDATE users
+SET password = 'NouveauMdpSecurise1#'
+WHERE id = 1;
+
+-- Erreur attendue : mot de passe avec espace
+UPDATE users
+SET password = 'Mot de passe'
+WHERE id = 1;
+```
+
+### Articles
+
+- Articles : insertion sans `stock_quantity` (doit retomber à 0 par défaut)
+```sql
+INSERT INTO articles (sku, title, unit_price, vat_rate)
+VALUES ('SKU-0006', 'Wireless Mouse', 19.90, 20);
+
+SELECT sku, stock_quantity FROM articles WHERE sku = 'SKU-0006';
+```
+
+- Stock_movements : insertion avec `article_id` et `change_quantity` (raison obligatoire car non NULL)
+```sql
+-- Approvisionner l’article 1 de +10 unités
+INSERT INTO stock_movements (article_id, change_quantity, reason)
+VALUES (1, 10, 'initial stock');
+
+-- Contrôler les valeurs calculées et le stock mis à jour
+SELECT id, before_qty, after_qty FROM stock_movements ORDER BY id DESC LIMIT 1;
+SELECT id, stock_quantity FROM articles WHERE id = 1;
+```
+
+### Orders
+
+- Orders : insertion avec status fourni (sera forcé à draft) + lignes + totaux
+```sql
+-- Créer une commande en demandant 'paid' : sera ramené à 'draft' par trg_orders_bi
+INSERT INTO orders (user_id, status) VALUES (1, 'paid');
+SELECT id, status FROM orders ORDER BY id DESC LIMIT 1; -- doit montrer 'draft'
+SET @order_id := LAST_INSERT_ID();
+
+-- Ajouter une ligne (totaux de la ligne et de la commande recalculés)
+INSERT INTO order_lines (order_id, article_id, quantity)
+VALUES (@order_id, 1, 2);
+
+SELECT line_net, line_vat, line_incl_vat FROM order_lines WHERE order_id = @order_id;
+SELECT total_net, total_vat, total_incl_vat FROM orders WHERE id = @order_id;
+```
+
+- Orders : passage à paid (mouvements négatifs) puis cancelled (mouvements positifs)
+```sql
+-- Passer la commande en 'confirmed' (obligatoire car draft -> paid est interdit)
+UPDATE orders SET status = 'confirmed' WHERE id = @order_id;
+
+-- Passer en 'paid' : insère des mouvements de stock en négatif
+UPDATE orders SET status = 'paid' WHERE id = @order_id;
+
+SELECT reason, change_quantity, before_qty, after_qty
+FROM stock_movements
+WHERE reason LIKE CONCAT('order ', @order_id, '%')
+ORDER BY id DESC;
+
+SELECT id, stock_quantity FROM articles WHERE id = 1; -- stock décrémenté
+
+-- Annuler : mouvements en positif (restock)
+UPDATE orders SET status = 'cancelled' WHERE id = @order_id;
+SELECT change_quantity, after_qty FROM stock_movements
+WHERE reason LIKE CONCAT('order ', @order_id, '%')
+ORDER BY id DESC LIMIT 1;
+SELECT stock_quantity FROM articles WHERE id = 1;
+```
+
+- Scénarios d’erreur supplémentaires
+```sql
+-- Stock insuffisant lors du passage en paid (quantité > stock dispo)
+INSERT INTO orders (user_id) VALUES (1);
+SET @order_id2 := LAST_INSERT_ID();
+INSERT INTO order_lines (order_id, article_id, quantity) VALUES (@order_id2, 1, 9999);
+UPDATE orders SET status = 'confirmed' WHERE id = @order_id2;
+UPDATE orders SET status = 'paid' WHERE id = @order_id2; -- doit lever 'Stock insuffisant'
+
+-- Mot de passe vide à la mise à jour
+UPDATE users SET password = '' WHERE id = 1; -- doit lever l'erreur de complexité
+```
