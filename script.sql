@@ -215,6 +215,40 @@ BEGIN
 END$$
 DELIMITER ;
 
+-- order_lines
+DROP PROCEDURE IF EXISTS `proc_order_line_hydrate_article`;
+DELIMITER $$
+CREATE PROCEDURE `proc_order_line_hydrate_article`(
+    IN p_article_id BIGINT,
+    OUT p_sku VARCHAR(100),
+    OUT p_title VARCHAR(255),
+    OUT p_description LONGTEXT,
+    OUT p_photo_url VARCHAR(255),
+    OUT p_unit_price DECIMAL(12,3),
+    OUT p_vat_rate DECIMAL(5,2)
+)
+BEGIN
+    DECLARE v_exist INT;
+
+    IF p_article_id IS NULL THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "L'article est obligatoire";
+    END IF;
+
+    SELECT COUNT(*) INTO v_exist FROM `articles` WHERE `id` = p_article_id;
+
+    IF v_exist = 0 THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "Article introuvable";
+    END IF;
+
+    SELECT 
+      `sku`, `title`, `description`, `photo_url`, `unit_price`, `vat_rate`
+    INTO 
+      p_sku, p_title, p_description, p_photo_url, p_unit_price, p_vat_rate
+    FROM `articles`
+    WHERE `id` = p_article_id;
+END$$
+DELIMITER ;
+
 -- =======================
 -- 4) TRIGGERS (ordre alphabétique des tables)
 -- =======================
@@ -294,16 +328,6 @@ CREATE TRIGGER `trg_order_lines_bi`
 BEFORE INSERT ON `order_lines` FOR EACH ROW
   BEGIN
     DECLARE v_exist INT;
-    DECLARE v_sku VARCHAR(100);
-    DECLARE v_title VARCHAR(255);
-    DECLARE v_description LONGTEXT;
-    DECLARE v_photo_url VARCHAR(255);
-    DECLARE v_price DECIMAL(12,3);
-    DECLARE v_vat DECIMAL(5,2);
-
-    IF NEW.`article_id` IS NULL THEN
-      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "L'article est obligatoire";
-    END IF;
 
     -- Check si la commande existe ?
     SELECT COUNT(*) INTO v_exist FROM `orders` WHERE `id` = NEW.`order_id`;
@@ -312,27 +336,15 @@ BEFORE INSERT ON `order_lines` FOR EACH ROW
       SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "La commande associée n'existe pas";
     END IF;
 
-    -- Récupération des données de l'article (Snapshot)
-    SELECT 
-      sku, title, description, photo_url, unit_price, vat_rate 
-    INTO 
-      v_sku, v_title, v_description, v_photo_url, v_price, v_vat
-    FROM 
-      `articles` 
-    WHERE 
-      `id` = NEW.`article_id`;
-
-    -- Si l'article n'existe pas en base
-    IF v_sku IS NULL THEN 
-      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "Article introuvable";
-    END IF;
-
-    SET NEW.`article_sku` = v_sku;
-    SET NEW.`article_title` = v_title;
-    SET NEW.`article_description` = v_description;
-    SET NEW.`article_photo_url` = v_photo_url;
-    SET NEW.`article_unit_price` = v_price;
-    SET NEW.`article_vat_rate` = v_vat;
+    CALL `proc_order_line_hydrate_article`(
+      NEW.`article_id`,
+      NEW.`article_sku`,
+      NEW.`article_title`,
+      NEW.`article_description`,
+      NEW.`article_photo_url`,
+      NEW.`article_unit_price`,
+      NEW.`article_vat_rate`
+    );
 
     -- Calcul des montants (Prix * Quantité)
     -- On s'assure que la quantité est au moins de 1
@@ -341,10 +353,10 @@ BEFORE INSERT ON `order_lines` FOR EACH ROW
     END IF;
 
     -- Calcul du HT (Hors Taxe)
-    SET NEW.`line_net` = v_price * NEW.`quantity`;
+    SET NEW.`line_net` = NEW.`article_unit_price` * NEW.`quantity`;
 
     -- Calcul du montant de la TVA
-    SET NEW.`line_vat` = NEW.`line_net` * (v_vat / 100);
+    SET NEW.`line_vat` = NEW.`line_net` * (NEW.`article_vat_rate` / 100);
 
     -- Calcul du TTC
     SET NEW.`line_incl_vat` = NEW.`line_net` + NEW.`line_vat`;
@@ -356,15 +368,23 @@ DELIMITER $$
 CREATE TRIGGER `trg_order_lines_bu`
 BEFORE UPDATE ON `order_lines` FOR EACH ROW
   BEGIN
+    CALL `proc_order_line_hydrate_article`(
+      NEW.`article_id`,
+      NEW.`article_sku`,
+      NEW.`article_title`,
+      NEW.`article_description`,
+      NEW.`article_photo_url`,
+      NEW.`article_unit_price`,
+      NEW.`article_vat_rate`
+    );
+
     IF NEW.`quantity` IS NULL OR NEW.`quantity` < 1 THEN
       SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "Quantité invalide : doit être >= 1";
     END IF;
 
-    IF NEW.`quantity` != OLD.`quantity` THEN
-      SET NEW.`line_net` = NEW.`article_unit_price` * NEW.`quantity`;
-      SET NEW.`line_vat` = NEW.`line_net` * (NEW.`article_vat_rate` / 100);
-      SET NEW.`line_incl_vat` = NEW.`line_net` + NEW.`line_vat`;
-    END IF;
+    SET NEW.`line_net` = NEW.`article_unit_price` * NEW.`quantity`;
+    SET NEW.`line_vat` = NEW.`line_net` * (NEW.`article_vat_rate` / 100);
+    SET NEW.`line_incl_vat` = NEW.`line_net` + NEW.`line_vat`;
   END$$
 DELIMITER ;
 
