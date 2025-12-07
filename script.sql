@@ -158,6 +158,30 @@ ALTER TABLE `users`
   ADD CONSTRAINT `uk_users_email` UNIQUE(`email`);
 
 -- =======================
+-- 3bis) PROCEDURE UTILITAIRE (utilisée par les triggers users)
+-- =======================
+
+-- users
+DROP PROCEDURE IF EXISTS `proc_user_validate_and_hash_password`;
+DELIMITER $$
+CREATE PROCEDURE `proc_user_validate_and_hash_password`(INOUT p_password VARCHAR(255))
+BEGIN
+    DECLARE v_password VARCHAR(255);
+
+    SET v_password = TRIM(p_password);
+
+    IF CHAR_LENGTH(v_password) < 12
+      OR v_password NOT REGEXP '[A-Z]'
+      OR v_password NOT REGEXP '[a-z]'
+      OR v_password NOT REGEXP '[0-9]'
+      OR v_password REGEXP ' ' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "Mot de passe invalide : >= 12 caractéres, 1 majuscule, 1 minuscule, 1 chiffre, pas d'espace";
+    END IF;
+
+    SET p_password = SHA1(v_password);
+END$$
+DELIMITER ;
+
+-- =======================
 -- 4) TRIGGERS (ordre alphabétique des tables)
 -- =======================
 
@@ -173,14 +197,11 @@ CREATE TRIGGER `trg_users_bi`
 BEFORE INSERT ON `users`
 FOR EACH ROW
 BEGIN
-    IF CHAR_LENGTH(TRIM(NEW.`password`)) < 12
-      OR NEW.`password` NOT REGEXP '[A-Z]'
-      OR NEW.`password` NOT REGEXP '[a-z]'
-      OR NEW.`password` NOT REGEXP '[0-9]'
-      OR NEW.`password` REGEXP ' ' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "Mot de passe invalide : >= 12 caractéres, 1 majuscule, 1 minuscule, 1 chiffre, pas d'espace";
-    END IF;
+    DECLARE v_password VARCHAR(255);
 
-    SET NEW.`password` = SHA1(TRIM(NEW.`password`));
+    SET v_password = NEW.`password`;
+    CALL `proc_user_validate_and_hash_password`(v_password);
+    SET NEW.`password` = v_password;
 END$$
 DELIMITER ;
 
@@ -189,15 +210,15 @@ DELIMITER $$
 CREATE TRIGGER `trg_users_bu`
 BEFORE UPDATE ON `users` FOR EACH ROW
   BEGIN
-    IF CHAR_LENGTH(TRIM(NEW.`password`)) < 12
-      OR NEW.`password` NOT REGEXP '[A-Z]'
-      OR NEW.`password` NOT REGEXP '[a-z]'
-      OR NEW.`password` NOT REGEXP '[0-9]'
-      OR NEW.`password` REGEXP ' ' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "Mot de passe invalide : >= 12 caractéres, 1 majuscule, 1 minuscule, 1 chiffre, pas d'espace";
-    END IF;
+    DECLARE v_password VARCHAR(255);
 
-    IF SHA1(TRIM(NEW.`password`)) != OLD.`password` THEN
-      SET NEW.`password` = SHA1(TRIM(NEW.`password`));
+    SET v_password = NEW.`password`;
+    CALL `proc_user_validate_and_hash_password`(v_password);
+
+    IF v_password != OLD.`password` THEN
+      SET NEW.`password` = v_password;
+    ELSE
+      SET NEW.`password` = OLD.`password`;
     END IF;
   END$$
 DELIMITER ;
@@ -527,7 +548,7 @@ END$$
 DELIMITER ;
 
 -- =======================
--- 5) INSERTS (ordre alphabétique des tables)
+-- 6) INSERTS (ordre alphabétique des tables)
 -- =======================
 
 -- articles
