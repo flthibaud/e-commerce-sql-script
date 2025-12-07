@@ -158,7 +158,7 @@ ALTER TABLE `users`
   ADD CONSTRAINT `uk_users_email` UNIQUE(`email`);
 
 -- =======================
--- 3bis) PROCEDURE UTILITAIRE (utilisée par les triggers users)
+-- 4 PROCEDURE UTILITAIRE (utilisée par les triggers users)
 -- =======================
 
 -- users
@@ -372,7 +372,29 @@ END$$
 DELIMITER ;
 
 -- =======================
--- 4) TRIGGERS (ordre alphabétique des tables)
+-- 5) FONCTIONS
+-- =======================
+
+DROP FUNCTION IF EXISTS `fn_order_status_label`;
+DELIMITER $$
+CREATE FUNCTION `fn_order_status_label`(
+    p_status ENUM('draft','confirmed','paid','cancelled')
+)
+RETURNS VARCHAR(20)
+DETERMINISTIC
+BEGIN
+    RETURN CASE p_status
+        WHEN 'draft' THEN 'Brouillon'
+        WHEN 'confirmed' THEN 'Confirmée'
+        WHEN 'paid' THEN 'Payée'
+        WHEN 'cancelled' THEN 'Annulée'
+        ELSE 'Inconnu'
+    END;
+END$$
+DELIMITER ;
+
+-- =======================
+-- 6) TRIGGERS (ordre alphabétique des tables)
 -- =======================
 
 -- CREATE TRIGGER trigger_name
@@ -648,7 +670,7 @@ END$$
 DELIMITER ;
 
 -- =======================
--- 6) INSERTS (ordre alphabétique des tables)
+-- 7) INSERTS (ordre alphabétique des tables)
 -- =======================
 
 -- articles
