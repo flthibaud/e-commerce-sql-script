@@ -459,6 +459,25 @@ ORDER BY `sales_month` ASC;
 $$
 DELIMITER ;
 
+DROP VIEW IF EXISTS `v_top_selling_articles`;
+DELIMITER $$
+CREATE VIEW `v_top_selling_articles` AS
+SELECT
+    ol.`article_id`,
+    ol.`article_sku`,
+    ol.`article_title`,
+    SUM(ol.`quantity`) AS `total_qty_sold`,
+    SUM(ol.`line_net`) AS `total_net`,
+    SUM(ol.`line_vat`) AS `total_vat`,
+    SUM(ol.`line_incl_vat`) AS `total_incl_vat`
+FROM `order_lines` ol
+JOIN `orders` o ON o.`id` = ol.`order_id`
+WHERE o.`status` IN ('confirmed', 'paid')
+GROUP BY ol.`article_id`, ol.`article_sku`, ol.`article_title`
+ORDER BY `total_qty_sold` DESC, `total_incl_vat` DESC;
+$$
+DELIMITER ;
+
 -- =======================
 -- 7) TRIGGERS (ordre alphabétique des tables)
 -- =======================
