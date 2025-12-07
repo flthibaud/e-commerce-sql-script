@@ -333,6 +333,44 @@ BEGIN
 END$$
 DELIMITER ;
 
+-- order status history
+DROP PROCEDURE IF EXISTS `proc_log_order_status`;
+DELIMITER $$
+CREATE PROCEDURE `proc_log_order_status`(
+    IN p_order_id BIGINT,
+    IN p_old_status ENUM('draft','confirmed','paid','cancelled'),
+    IN p_new_status ENUM('draft','confirmed','paid','cancelled')
+)
+BEGIN
+    IF p_order_id IS NULL THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "Commande manquante pour historisation";
+    END IF;
+
+    IF p_old_status = p_new_status THEN
+      RETURN;
+    END IF;
+
+    INSERT INTO `order_history` (`order_id`, `previous_status`, `new_status`, `changed_at`)
+    VALUES (p_order_id, p_old_status, p_new_status, NOW());
+END$$
+DELIMITER ;
+
+-- order number generation (mensuel)
+DROP PROCEDURE IF EXISTS `proc_generate_order_number`;
+DELIMITER $$
+CREATE PROCEDURE `proc_generate_order_number`(
+    IN p_order_id BIGINT,
+    OUT p_order_number VARCHAR(50)
+)
+BEGIN
+    IF p_order_id IS NULL THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "Impossible de générer le numéro de commande : id manquant";
+    END IF;
+
+    SET p_order_number = CONCAT(DATE_FORMAT(NOW(), '%Y%m'), '-', LPAD(p_order_id, 4, '0'));
+END$$
+DELIMITER ;
+
 -- =======================
 -- 4) TRIGGERS (ordre alphabétique des tables)
 -- =======================
@@ -382,6 +420,7 @@ CREATE TRIGGER `trg_orders_bi`
 BEFORE INSERT ON `orders` FOR EACH ROW
   BEGIN
     DECLARE v_next_id BIGINT;
+    DECLARE v_order_number VARCHAR(50);
 
     SET NEW.`status` = 'draft';
 
@@ -395,13 +434,17 @@ BEFORE INSERT ON `orders` FOR EACH ROW
       NEW.`user_delivery_address`
     );
 
-    -- Préparer l'order_number avant insertion pour éviter une mise à jour sur la même table
     SELECT `AUTO_INCREMENT`
     INTO v_next_id
     FROM `information_schema`.`TABLES`
     WHERE `TABLE_SCHEMA` = DATABASE() AND `TABLE_NAME` = 'orders';
 
-    SET NEW.`order_number` = CONCAT(DATE_FORMAT(NOW(), '%Y%m%d'), '-', LPAD(IFNULL(NEW.`id`, v_next_id), 4, '0'));
+    IF v_next_id IS NULL OR v_next_id < 1 THEN
+      SELECT IFNULL(MAX(`id`), 0) + 1 INTO v_next_id FROM `orders`;
+    END IF;
+
+    CALL `proc_generate_order_number`(IFNULL(NEW.`id`, v_next_id), v_order_number);
+    SET NEW.`order_number` = v_order_number;
   END$$
 DELIMITER ;
 
@@ -541,10 +584,7 @@ BEGIN
   END IF;
 
   -- Historisation simple (toutes transitions de statut)
-  IF OLD.`status` <> NEW.`status` THEN
-    INSERT INTO `order_history` (`order_id`, `previous_status`, `new_status`, `changed_at`)
-    VALUES (NEW.`id`, OLD.`status`, NEW.`status`, NOW());
-  END IF;
+  CALL `proc_log_order_status`(NEW.`id`, OLD.`status`, NEW.`status`);
 
   -- Calcul du sens du mouvement de stock
   IF NEW.`status` = 'paid' AND OLD.`status` <> 'paid' THEN
