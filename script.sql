@@ -512,6 +512,25 @@ ORDER BY a.`stock_quantity` ASC, a.`id` ASC;
 $$
 DELIMITER ;
 
+DROP VIEW IF EXISTS `v_category_sales`;
+DELIMITER $$
+CREATE VIEW `v_category_sales` AS
+SELECT
+    c.`id` AS `category_id`,
+    c.`name` AS `category_name`,
+    SUM(ol.`line_net`) AS `total_net`,
+    SUM(ol.`line_vat`) AS `total_vat`,
+    SUM(ol.`line_incl_vat`) AS `total_incl_vat`
+FROM `order_lines` ol
+JOIN `orders` o ON o.`id` = ol.`order_id`
+JOIN `article_categories` ac ON ac.`article_id` = ol.`article_id`
+JOIN `categories` c ON c.`id` = ac.`category_id`
+WHERE o.`status` IN ('confirmed', 'paid')
+GROUP BY c.`id`, c.`name`
+ORDER BY `total_incl_vat` DESC, `total_net` DESC;
+$$
+DELIMITER ;
+
 -- =======================
 -- 7) TRIGGERS (ordre alphabétique des tables)
 -- =======================
