@@ -279,6 +279,24 @@ BEGIN
 END$$
 DELIMITER ;
 
+-- order line totals
+DROP PROCEDURE IF EXISTS `proc_order_line_compute_totals`;
+DELIMITER $$
+CREATE PROCEDURE `proc_order_line_compute_totals`(
+    IN p_unit_price DECIMAL(12,3),
+    IN p_vat_rate DECIMAL(5,2),
+    IN p_qty INT,
+    OUT p_line_net DECIMAL(14,3),
+    OUT p_line_vat DECIMAL(14,3),
+    OUT p_line_incl_vat DECIMAL(14,3)
+)
+BEGIN
+    SET p_line_net = p_unit_price * p_qty;
+    SET p_line_vat = p_line_net * (p_vat_rate / 100);
+    SET p_line_incl_vat = p_line_net + p_line_vat;
+END$$
+DELIMITER ;
+
 -- =======================
 -- 4) TRIGGERS (ordre alphabétique des tables)
 -- =======================
@@ -384,14 +402,14 @@ BEFORE INSERT ON `order_lines` FOR EACH ROW
 
     CALL `proc_check_stock`(NEW.`article_id`, NEW.`quantity`);
 
-    -- Calcul du HT (Hors Taxe)
-    SET NEW.`line_net` = NEW.`article_unit_price` * NEW.`quantity`;
-
-    -- Calcul du montant de la TVA
-    SET NEW.`line_vat` = NEW.`line_net` * (NEW.`article_vat_rate` / 100);
-
-    -- Calcul du TTC
-    SET NEW.`line_incl_vat` = NEW.`line_net` + NEW.`line_vat`;
+    CALL `proc_order_line_compute_totals`(
+      NEW.`article_unit_price`,
+      NEW.`article_vat_rate`,
+      NEW.`quantity`,
+      NEW.`line_net`,
+      NEW.`line_vat`,
+      NEW.`line_incl_vat`
+    );
   END$$
 DELIMITER ;
 
@@ -416,9 +434,14 @@ BEFORE UPDATE ON `order_lines` FOR EACH ROW
 
     CALL `proc_check_stock`(NEW.`article_id`, NEW.`quantity`);
 
-    SET NEW.`line_net` = NEW.`article_unit_price` * NEW.`quantity`;
-    SET NEW.`line_vat` = NEW.`line_net` * (NEW.`article_vat_rate` / 100);
-    SET NEW.`line_incl_vat` = NEW.`line_net` + NEW.`line_vat`;
+    CALL `proc_order_line_compute_totals`(
+      NEW.`article_unit_price`,
+      NEW.`article_vat_rate`,
+      NEW.`quantity`,
+      NEW.`line_net`,
+      NEW.`line_vat`,
+      NEW.`line_incl_vat`
+    );
   END$$
 DELIMITER ;
 
