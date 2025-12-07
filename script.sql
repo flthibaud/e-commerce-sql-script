@@ -393,6 +393,24 @@ BEGIN
 END$$
 DELIMITER ;
 
+DROP FUNCTION IF EXISTS `fn_article_stock_level`;
+DELIMITER $$
+CREATE FUNCTION `fn_article_stock_level`(
+    p_stock_quantity INT
+)
+RETURNS VARCHAR(50)
+DETERMINISTIC
+BEGIN
+    IF p_stock_quantity IS NULL OR p_stock_quantity <= 0 THEN
+        RETURN 'Stock épuisé';
+    ELSEIF p_stock_quantity <= 10 THEN
+        RETURN CONCAT('Plus que ', p_stock_quantity, ' produits disponibles');
+    ELSE
+        RETURN 'Disponible';
+    END IF;
+END$$
+DELIMITER ;
+
 -- =======================
 -- 6) TRIGGERS (ordre alphabétique des tables)
 -- =======================
