@@ -297,6 +297,42 @@ BEGIN
 END$$
 DELIMITER ;
 
+-- order totals recompute
+DROP PROCEDURE IF EXISTS `proc_order_recompute_totals`;
+DELIMITER $$
+CREATE PROCEDURE `proc_order_recompute_totals`(
+    IN p_order_id BIGINT
+)
+BEGIN
+    DECLARE v_total_net DECIMAL(14,3);
+    DECLARE v_total_vat DECIMAL(14,3);
+    DECLARE v_total_incl_vat DECIMAL(14,3);
+
+    IF p_order_id IS NULL THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "Commande manquante pour recalcul des totaux";
+    END IF;
+
+    SELECT 
+        COALESCE(SUM(line_net), 0),
+        COALESCE(SUM(line_vat), 0),
+        COALESCE(SUM(line_incl_vat), 0)
+    INTO
+        v_total_net, v_total_vat, v_total_incl_vat
+    FROM
+        `order_lines`
+    WHERE
+        `order_id` = p_order_id;
+
+    UPDATE `orders`
+    SET
+        `total_net` = v_total_net,
+        `total_vat` = v_total_vat,
+        `total_incl_vat` = v_total_incl_vat
+    WHERE
+        `id` = p_order_id;
+END$$
+DELIMITER ;
+
 -- =======================
 -- 4) TRIGGERS (ordre alphabétique des tables)
 -- =======================
@@ -450,28 +486,7 @@ DELIMITER $$
 CREATE TRIGGER `trg_order_lines_ai`
 AFTER INSERT ON `order_lines` FOR EACH ROW
 BEGIN
-    DECLARE v_total_net DECIMAL(14,3);
-    DECLARE v_total_vat DECIMAL(14,3);
-    DECLARE v_total_incl_vat DECIMAL(14,3);
-
-    SELECT 
-        COALESCE(SUM(line_net), 0), 
-        COALESCE(SUM(line_vat), 0), 
-        COALESCE(SUM(line_incl_vat), 0)
-    INTO 
-        v_total_net, v_total_vat, v_total_incl_vat
-    FROM 
-        `order_lines`
-    WHERE 
-        `order_id` = NEW.`order_id`;
-
-    UPDATE `orders`
-    SET 
-        `total_net` = v_total_net,
-        `total_vat` = v_total_vat,
-        `total_incl_vat` = v_total_incl_vat
-    WHERE 
-        `id` = NEW.`order_id`;
+    CALL `proc_order_recompute_totals`(NEW.`order_id`);
 END$$
 DELIMITER ;
 
@@ -480,28 +495,7 @@ DELIMITER $$
 CREATE TRIGGER `trg_order_lines_au`
 AFTER UPDATE ON `order_lines` FOR EACH ROW
 BEGIN
-    DECLARE v_total_net DECIMAL(14,3);
-    DECLARE v_total_vat DECIMAL(14,3);
-    DECLARE v_total_incl_vat DECIMAL(14,3);
-
-    SELECT 
-        COALESCE(SUM(line_net), 0), 
-        COALESCE(SUM(line_vat), 0), 
-        COALESCE(SUM(line_incl_vat), 0)
-    INTO 
-        v_total_net, v_total_vat, v_total_incl_vat
-    FROM 
-        `order_lines`
-    WHERE 
-        `order_id` = NEW.`order_id`;
-
-    UPDATE `orders`
-    SET 
-        `total_net` = v_total_net,
-        `total_vat` = v_total_vat,
-        `total_incl_vat` = v_total_incl_vat
-    WHERE 
-        `id` = NEW.`order_id`;
+    CALL `proc_order_recompute_totals`(NEW.`order_id`);
 END$$
 DELIMITER ;
 
@@ -510,28 +504,7 @@ DELIMITER $$
 CREATE TRIGGER `trg_order_lines_ad`
 AFTER DELETE ON `order_lines` FOR EACH ROW
 BEGIN
-    DECLARE v_total_net DECIMAL(14,3);
-    DECLARE v_total_vat DECIMAL(14,3);
-    DECLARE v_total_incl_vat DECIMAL(14,3);
-
-    SELECT 
-        COALESCE(SUM(line_net), 0), 
-        COALESCE(SUM(line_vat), 0), 
-        COALESCE(SUM(line_incl_vat), 0)
-    INTO 
-        v_total_net, v_total_vat, v_total_incl_vat
-    FROM 
-        `order_lines`
-    WHERE 
-        `order_id` = OLD.`order_id`;
-
-    UPDATE `orders`
-    SET 
-        `total_net` = v_total_net,
-        `total_vat` = v_total_vat,
-        `total_incl_vat` = v_total_incl_vat
-    WHERE 
-        `id` = OLD.`order_id`;
+    CALL `proc_order_recompute_totals`(OLD.`order_id`);
 END$$
 DELIMITER ;
 
