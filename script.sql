@@ -82,7 +82,7 @@ CREATE TABLE `orders` (
   `total_vat`               DECIMAL(14,3) NOT NULL DEFAULT 0 COMMENT "doit être supérieur ou égal à 0 - calculé par trigger",
   `total_incl_vat`          DECIMAL(14,3) NOT NULL DEFAULT 0 COMMENT "doit être supérieur ou égal à 0 - calculé par trigger",
   `order_number`            VARCHAR(50) DEFAULT NULL COMMENT "doit être unique (hydraté par trigger)",
-  `created_at`              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  `date`                    DATETIME DEFAULT NULL COMMENT "date de confirmation/paiement"
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 DROP TABLE IF EXISTS `order_history`;
@@ -420,6 +420,18 @@ DELIMITER ;
 -- 6) VUES
 -- =======================
 
+DROP VIEW IF EXISTS `v_sales_daily`;
+CREATE VIEW `v_sales_daily` AS
+SELECT
+    DATE(`date`) AS `sale_date`,
+    COUNT(*) AS `orders_count`,
+    SUM(`total_net`) AS `total_net`,
+    SUM(`total_vat`) AS `total_vat`,
+    SUM(`total_incl_vat`) AS `total_incl_vat`
+FROM `orders`
+WHERE `status` IN ('confirmed', 'paid')
+GROUP BY DATE(`date`);
+
 -- =======================
 -- 7) TRIGGERS (ordre alphabétique des tables)
 -- =======================
@@ -488,6 +500,19 @@ BEFORE INSERT ON `orders` FOR EACH ROW
     CALL `proc_generate_order_number`(v_next_id, v_order_number);
     SET NEW.`order_number` = v_order_number;
   END$$
+DELIMITER ;
+
+DROP TRIGGER IF EXISTS `trg_orders_bu`;
+DELIMITER $$
+CREATE TRIGGER `trg_orders_bu`
+BEFORE UPDATE ON `orders`
+FOR EACH ROW
+BEGIN
+    -- Renseigne la date de commande lors du passage à confirmé ou payé
+    IF NEW.`status` IN ('confirmed', 'paid') AND NEW.`date` IS NULL THEN
+        SET NEW.`date` = NOW();
+    END IF;
+END$$
 DELIMITER ;
 
 -- orders_lines
