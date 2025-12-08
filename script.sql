@@ -430,6 +430,7 @@ SELECT
     SUM(`total_incl_vat`) AS `total_incl_vat`
 FROM `orders`
 WHERE `status` IN ('confirmed', 'paid')
+  AND `date` IS NOT NULL
 GROUP BY DATE(`date`);
 
 DROP VIEW IF EXISTS `v_sales_monthly`;
@@ -442,6 +443,7 @@ SELECT
     SUM(`total_incl_vat`) AS `total_incl_vat`
 FROM `orders`
 WHERE `status` IN ('confirmed', 'paid')
+  AND `date` IS NOT NULL
 GROUP BY DATE_FORMAT(`date`, '%Y-%m');
 
 DROP VIEW IF EXISTS `v_top_selling_articles`;
@@ -453,7 +455,10 @@ SELECT
     SUM(al.`quantity`) AS `total_quantity_sold`,
     SUM(al.`line_incl_vat`) AS `total_sales_incl_vat`
 FROM `order_lines` al
+JOIN `orders` o ON o.`id` = al.`order_id`
 JOIN `articles` a ON al.`article_id` = a.`id`
+WHERE o.`status` IN ('confirmed', 'paid')
+  AND o.`date` IS NOT NULL
 GROUP BY al.`article_id`, a.`sku`, a.`title`;
 
 DROP VIEW IF EXISTS `v_active_customers`;
@@ -467,19 +472,8 @@ SELECT
     SUM(o.`total_incl_vat`) AS `total_spent`
 FROM `orders` o
 JOIN `users` u ON o.`user_id` = u.`id`
-GROUP BY o.`user_id`, u.`firstname`, u.`lastname`, u.`email`;
-
-DROP VIEW IF EXISTS `v_active_customers`;
-CREATE VIEW `v_active_customers` AS
-SELECT
-    o.`user_id`,
-    u.`firstname`,
-    u.`lastname`,
-    u.`email`,
-    COUNT(o.`id`) AS `orders_count`,
-    SUM(o.`total_incl_vat`) AS `total_spent`
-FROM `orders` o
-JOIN `users` u ON o.`user_id` = u.`id`
+WHERE o.`status` IN ('confirmed', 'paid')
+  AND o.`date` IS NOT NULL
 GROUP BY o.`user_id`, u.`firstname`, u.`lastname`, u.`email`;
 
 DROP VIEW IF EXISTS `v_stock_alert`;
@@ -493,21 +487,7 @@ SELECT
 FROM `articles`
 WHERE `stock_quantity` <= 10;
 
-DROP VIEW IF EXISTS `v_category_sales`;
-CREATE VIEW `v_category_sales` AS
-SELECT
-    c.`id` AS `category_id`,
-    c.`name` AS `category_name`,
-    c.`slug` AS `category_slug`,
-    SUM(ol.`line_net`) AS `total_net`,
-    SUM(ol.`line_vat`) AS `total_vat`,
-    SUM(ol.`line_incl_vat`) AS `total_incl_vat`
-FROM `categories` c
-JOIN `article_categories` ac ON ac.`category_id` = c.`id`
-JOIN `order_lines` ol ON ol.`article_id` = ac.`article_id`
-JOIN `orders` o ON o.`id` = ol.`order_id`
-WHERE o.`status` IN ('confirmed', 'paid')
-GROUP BY c.`id`, c.`name`, c.`slug`;
+-- @TODO TRIGGER Chiffre d’affaires par catégorie
 
 -- =======================
 -- 7) TRIGGERS (ordre alphabétique des tables)
