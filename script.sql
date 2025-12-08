@@ -495,6 +495,9 @@ BEFORE INSERT ON `orders` FOR EACH ROW
       NEW.`user_delivery_address`
     );
 
+    -- devrait etre refacto dans une table intermédiare pour éviter de depasser 9999 commandes par mois
+    -- avec champs mois + année + compteur auto increment par mois
+
     SELECT IFNULL(MAX(`id`), 0) + 1 INTO v_next_id FROM `orders`;
 
     CALL `proc_generate_order_number`(v_next_id, v_order_number);
