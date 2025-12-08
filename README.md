@@ -179,3 +179,7 @@ UPDATE orders SET status = 'paid' WHERE id = @order_id2; -- doit lever 'Stock in
 -- Mot de passe vide à la mise à jour
 UPDATE users SET password = '' WHERE id = 1; -- doit lever l'erreur de complexité
 ```
+
+## Possible corrections
+
+- Génerer le numéro de la commande via une table intermediare afin de concatener dans la table order afin d'eviter un overflow sur BIGINT

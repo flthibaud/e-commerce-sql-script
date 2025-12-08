@@ -81,7 +81,8 @@ CREATE TABLE `orders` (
   `total_net`               DECIMAL(14,3) NOT NULL DEFAULT 0 COMMENT "doit être supérieur ou égal à 0 - calculé par trigger",
   `total_vat`               DECIMAL(14,3) NOT NULL DEFAULT 0 COMMENT "doit être supérieur ou égal à 0 - calculé par trigger",
   `total_incl_vat`          DECIMAL(14,3) NOT NULL DEFAULT 0 COMMENT "doit être supérieur ou égal à 0 - calculé par trigger",
-  `order_number`            VARCHAR(50) DEFAULT NULL COMMENT "doit être unique (hydraté par trigger)"
+  `order_number`            VARCHAR(50) DEFAULT NULL COMMENT "doit être unique (hydraté par trigger)",
+  `created_at`              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 DROP TABLE IF EXISTS `order_history`;
@@ -371,7 +372,7 @@ BEGIN
       SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "Impossible de générer le numéro de commande : id manquant";
     END IF;
 
-    SET p_order_number = CONCAT(DATE_FORMAT(NOW(), '%Y%m'), '-', LPAD(p_order_id, 4, '0'));
+    SELECT CONCAT(DATE_FORMAT(NOW(), '%Y%m'), '-', LPAD(p_order_id, 4, '0')) INTO p_order_number;
 END$$
 DELIMITER ;
 
@@ -418,122 +419,6 @@ DELIMITER ;
 -- =======================
 -- 6) VUES
 -- =======================
-
-DROP VIEW IF EXISTS `v_sales_daily`;
-DELIMITER $$
-CREATE VIEW `v_sales_daily` AS
-SELECT
-    DATE(t.`status_changed_at`) AS `sales_day`,
-    COUNT(*) AS `orders_count`,
-    SUM(o.`total_net`) AS `total_net`,
-    SUM(o.`total_vat`) AS `total_vat`,
-    SUM(o.`total_incl_vat`) AS `total_incl_vat`
-FROM `orders` o
-JOIN (
-    SELECT `order_id`, MAX(`changed_at`) AS `status_changed_at`
-    FROM `order_history`
-    WHERE `new_status` IN ('confirmed', 'paid')
-    GROUP BY `order_id`
-) t ON t.`order_id` = o.`id`
-WHERE o.`status` IN ('confirmed', 'paid')
-GROUP BY DATE(t.`status_changed_at`)
-ORDER BY `sales_day` ASC;
-$$
-DELIMITER ;
-
-DROP VIEW IF EXISTS `v_sales_monthly`;
-DELIMITER $$
-CREATE VIEW `v_sales_monthly` AS
-SELECT
-    DATE_FORMAT(t.`status_changed_at`, '%Y-%m-01') AS `sales_month`,
-    COUNT(*) AS `orders_count`,
-    SUM(o.`total_net`) AS `total_net`,
-    SUM(o.`total_vat`) AS `total_vat`,
-    SUM(o.`total_incl_vat`) AS `total_incl_vat`
-FROM `orders` o
-JOIN (
-    SELECT `order_id`, MAX(`changed_at`) AS `status_changed_at`
-    FROM `order_history`
-    WHERE `new_status` IN ('confirmed', 'paid')
-    GROUP BY `order_id`
-) t ON t.`order_id` = o.`id`
-WHERE o.`status` IN ('confirmed', 'paid')
-GROUP BY DATE_FORMAT(t.`status_changed_at`, '%Y-%m-01')
-ORDER BY `sales_month` ASC;
-$$
-DELIMITER ;
-
-DROP VIEW IF EXISTS `v_top_selling_articles`;
-DELIMITER $$
-CREATE VIEW `v_top_selling_articles` AS
-SELECT
-    ol.`article_id`,
-    ol.`article_sku`,
-    ol.`article_title`,
-    SUM(ol.`quantity`) AS `total_qty_sold`,
-    SUM(ol.`line_net`) AS `total_net`,
-    SUM(ol.`line_vat`) AS `total_vat`,
-    SUM(ol.`line_incl_vat`) AS `total_incl_vat`
-FROM `order_lines` ol
-JOIN `orders` o ON o.`id` = ol.`order_id`
-WHERE o.`status` IN ('confirmed', 'paid')
-GROUP BY ol.`article_id`, ol.`article_sku`, ol.`article_title`
-ORDER BY `total_qty_sold` DESC, `total_incl_vat` DESC;
-$$
-DELIMITER ;
-
-DROP VIEW IF EXISTS `v_active_customers`;
-DELIMITER $$
-CREATE VIEW `v_active_customers` AS
-SELECT
-    o.`user_id`,
-    o.`user_email`,
-    o.`user_firstname`,
-    o.`user_lastname`,
-    COUNT(*) AS `orders_count`,
-    SUM(o.`total_net`) AS `total_net`,
-    SUM(o.`total_vat`) AS `total_vat`,
-    SUM(o.`total_incl_vat`) AS `total_incl_vat`
-FROM `orders` o
-WHERE o.`status` IN ('confirmed', 'paid')
-GROUP BY o.`user_id`, o.`user_email`, o.`user_firstname`, o.`user_lastname`
-ORDER BY `total_incl_vat` DESC, `orders_count` DESC;
-$$
-DELIMITER ;
-
-DROP VIEW IF EXISTS `v_stock_alert`;
-DELIMITER $$
-CREATE VIEW `v_stock_alert` AS
-SELECT
-    a.`id` AS `article_id`,
-    a.`sku`,
-    a.`title`,
-    a.`stock_quantity`,
-    fn_article_stock_level(a.`stock_quantity`) AS `stock_level`
-FROM `articles` a
-WHERE a.`stock_quantity` <= 10
-ORDER BY a.`stock_quantity` ASC, a.`id` ASC;
-$$
-DELIMITER ;
-
-DROP VIEW IF EXISTS `v_category_sales`;
-DELIMITER $$
-CREATE VIEW `v_category_sales` AS
-SELECT
-    c.`id` AS `category_id`,
-    c.`name` AS `category_name`,
-    SUM(ol.`line_net`) AS `total_net`,
-    SUM(ol.`line_vat`) AS `total_vat`,
-    SUM(ol.`line_incl_vat`) AS `total_incl_vat`
-FROM `order_lines` ol
-JOIN `orders` o ON o.`id` = ol.`order_id`
-JOIN `article_categories` ac ON ac.`article_id` = ol.`article_id`
-JOIN `categories` c ON c.`id` = ac.`category_id`
-WHERE o.`status` IN ('confirmed', 'paid')
-GROUP BY c.`id`, c.`name`
-ORDER BY `total_incl_vat` DESC, `total_net` DESC;
-$$
-DELIMITER ;
 
 -- =======================
 -- 7) TRIGGERS (ordre alphabétique des tables)
@@ -598,16 +483,9 @@ BEFORE INSERT ON `orders` FOR EACH ROW
       NEW.`user_delivery_address`
     );
 
-    SELECT `AUTO_INCREMENT`
-    INTO v_next_id
-    FROM `information_schema`.`TABLES`
-    WHERE `TABLE_SCHEMA` = DATABASE() AND `TABLE_NAME` = 'orders';
+    SELECT IFNULL(MAX(`id`), 0) + 1 INTO v_next_id FROM `orders`;
 
-    IF v_next_id IS NULL OR v_next_id < 1 THEN
-      SELECT IFNULL(MAX(`id`), 0) + 1 INTO v_next_id FROM `orders`;
-    END IF;
-
-    CALL `proc_generate_order_number`(IFNULL(NEW.`id`, v_next_id), v_order_number);
+    CALL `proc_generate_order_number`(v_next_id, v_order_number);
     SET NEW.`order_number` = v_order_number;
   END$$
 DELIMITER ;
