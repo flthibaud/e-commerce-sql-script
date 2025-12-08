@@ -352,12 +352,10 @@ BEGIN
       SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = "Commande manquante pour historisation";
     END IF;
 
-    IF p_old_status = p_new_status THEN
-      RETURN;
+    IF p_old_status != p_new_status THEN
+        INSERT INTO `order_history` (`order_id`, `previous_status`, `new_status`, `changed_at`)
+        VALUES (p_order_id, p_old_status, p_new_status, NOW());
     END IF;
-
-    INSERT INTO `order_history` (`order_id`, `previous_status`, `new_status`, `changed_at`)
-    VALUES (p_order_id, p_old_status, p_new_status, NOW());
 END$$
 DELIMITER ;
 
