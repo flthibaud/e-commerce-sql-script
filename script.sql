@@ -432,6 +432,83 @@ FROM `orders`
 WHERE `status` IN ('confirmed', 'paid')
 GROUP BY DATE(`date`);
 
+DROP VIEW IF EXISTS `v_sales_monthly`;
+CREATE VIEW `v_sales_monthly` AS
+SELECT
+    DATE_FORMAT(`date`, '%Y-%m') AS `sale_month`,
+    COUNT(*) AS `orders_count`,
+    SUM(`total_net`) AS `total_net`,
+    SUM(`total_vat`) AS `total_vat`,
+    SUM(`total_incl_vat`) AS `total_incl_vat`
+FROM `orders`
+WHERE `status` IN ('confirmed', 'paid')
+GROUP BY DATE_FORMAT(`date`, '%Y-%m');
+
+DROP VIEW IF EXISTS `v_top_selling_articles`;
+CREATE VIEW `v_top_selling_articles` AS
+SELECT
+    al.`article_id`,
+    a.`sku`,
+    a.`title`,
+    SUM(al.`quantity`) AS `total_quantity_sold`,
+    SUM(al.`line_incl_vat`) AS `total_sales_incl_vat`
+FROM `order_lines` al
+JOIN `articles` a ON al.`article_id` = a.`id`
+GROUP BY al.`article_id`, a.`sku`, a.`title`;
+
+DROP VIEW IF EXISTS `v_active_customers`;
+CREATE VIEW `v_active_customers` AS
+SELECT
+    o.`user_id`,
+    u.`firstname`,
+    u.`lastname`,
+    u.`email`,
+    COUNT(o.`id`) AS `orders_count`,
+    SUM(o.`total_incl_vat`) AS `total_spent`
+FROM `orders` o
+JOIN `users` u ON o.`user_id` = u.`id`
+GROUP BY o.`user_id`, u.`firstname`, u.`lastname`, u.`email`;
+
+DROP VIEW IF EXISTS `v_active_customers`;
+CREATE VIEW `v_active_customers` AS
+SELECT
+    o.`user_id`,
+    u.`firstname`,
+    u.`lastname`,
+    u.`email`,
+    COUNT(o.`id`) AS `orders_count`,
+    SUM(o.`total_incl_vat`) AS `total_spent`
+FROM `orders` o
+JOIN `users` u ON o.`user_id` = u.`id`
+GROUP BY o.`user_id`, u.`firstname`, u.`lastname`, u.`email`;
+
+DROP VIEW IF EXISTS `v_stock_alert`;
+CREATE VIEW `v_stock_alert` AS
+SELECT
+    `id` AS `article_id`,
+    `sku`,
+    `title`,
+    `stock_quantity`,
+    fn_article_stock_level(`stock_quantity`) AS `stock_level`
+FROM `articles`
+WHERE `stock_quantity` <= 10;
+
+DROP VIEW IF EXISTS `v_category_sales`;
+CREATE VIEW `v_category_sales` AS
+SELECT
+    c.`id` AS `category_id`,
+    c.`name` AS `category_name`,
+    c.`slug` AS `category_slug`,
+    SUM(ol.`line_net`) AS `total_net`,
+    SUM(ol.`line_vat`) AS `total_vat`,
+    SUM(ol.`line_incl_vat`) AS `total_incl_vat`
+FROM `categories` c
+JOIN `article_categories` ac ON ac.`category_id` = c.`id`
+JOIN `order_lines` ol ON ol.`article_id` = ac.`article_id`
+JOIN `orders` o ON o.`id` = ol.`order_id`
+WHERE o.`status` IN ('confirmed', 'paid')
+GROUP BY c.`id`, c.`name`, c.`slug`;
+
 -- =======================
 -- 7) TRIGGERS (ordre alphabétique des tables)
 -- =======================
