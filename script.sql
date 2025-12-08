@@ -552,8 +552,7 @@ BEFORE INSERT ON `orders` FOR EACH ROW
       NEW.`user_delivery_address`
     );
 
-    -- devrait etre refacto dans une table intermédiare pour éviter de depasser 9999 commandes par mois
-    -- avec champs mois + année + compteur auto increment par mois
+    -- TODO: générer le numéro via un compteur mensuel dédié (table séquence par mois) pour éviter MAX(id)+1 et les doublons en concurrence
 
     SELECT IFNULL(MAX(`id`), 0) + 1 INTO v_next_id FROM `orders`;
 

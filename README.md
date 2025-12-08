@@ -182,4 +182,4 @@ UPDATE users SET password = '' WHERE id = 1; -- doit lever l'erreur de complexit
 
 ## Possible corrections
 
-- Génerer le numéro de la commande via une table intermediare afin de concatener dans la table order afin d'eviter un overflow sur BIGINT
+- Générer le numéro de commande avec un compteur mensuel dédié (table séquence par mois)
